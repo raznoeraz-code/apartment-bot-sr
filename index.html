@@ -614,9 +614,18 @@ function updateSummary() {
 }
 
 // Сохранение
-function saveFilters() {
+async function saveFilters() {
   const pMin = document.getElementById('price-min').value;
   const pMax = document.getElementById('price-max').value;
+
+  // Получаем user_id из параметров URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const userId = urlParams.get('user_id');
+
+  if (!userId) {
+    alert('Ошибка: не удалось определить пользователя. Открой бота заново.');
+    return;
+  }
 
   const filters = {
     rooms: state.rooms,
@@ -630,10 +639,36 @@ function saveFilters() {
     map_polygon: state.map_polygon,
   };
 
+  // Показываем что сохраняем
+  const btn = document.querySelector('.save-btn');
+  btn.textContent = '⏳ Сохраняю...';
+  btn.disabled = true;
+
   try {
-    tg.sendData(JSON.stringify(filters));
+    // Отправляем фильтры на локальный сервер бота
+    const BOT_SERVER = 'http://localhost:8080';
+    const resp = await fetch(`${BOT_SERVER}/save_filters`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, filters: filters }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      btn.textContent = '✅ Сохранено!';
+      setTimeout(() => tg.close(), 800);
+    } else {
+      throw new Error(result.error || 'Неизвестная ошибка');
+    }
   } catch(e) {
-    alert('Ошибка: ' + e.message);
+    // Если не достучались до сервера — пробуем через sendData
+    console.warn('HTTP failed, trying sendData:', e);
+    try {
+      tg.sendData(JSON.stringify({ user_id: userId, filters: filters }));
+    } catch(e2) {
+      alert('Не удалось сохранить фильтры: ' + e.message + '\n\nУбедись что бот запущен на компьютере.');
+      btn.textContent = '💾 Сохранить и запустить поиск';
+      btn.disabled = false;
+    }
   }
 }
 </script>
