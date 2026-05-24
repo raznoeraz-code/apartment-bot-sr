@@ -630,8 +630,11 @@ function saveFilters() {
     map_polygon: state.map_polygon,
   };
 
-  tg.sendData(JSON.stringify(filters));
-  tg.close();
+  try {
+    tg.sendData(JSON.stringify(filters));
+  } catch(e) {
+    alert('Ошибка: ' + e.message);
+  }
 }
 </script>
 </body>
