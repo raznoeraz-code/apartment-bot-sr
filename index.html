@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Поиск квартир</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --card: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eaeaea;
+    --text2: #a8a8b3;
+    --border: #2a2a4a;
+    --green: #4ade80;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    background: linear-gradient(135deg, var(--card), var(--accent2));
+    padding: 20px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header p { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 80px;
+    z-index: 99;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text2);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-content { display: none; padding: 16px; }
+  .tab-content.active { display: block; }
+
+  .section {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 12px;
+  }
+
+  /* Кнопки выбора комнат */
+  .rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+
+  .room-btn {
+    background: var(--card);
+    border: 2px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .room-btn.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  /* Слайдер цены */
+  .price-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .input-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .input-group input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-group input:focus { border-color: var(--accent); }
+
+  /* Метро */
+  .metro-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--accent) var(--pct, 50%), var(--border) var(--pct, 50%));
+    outline: none;
+    cursor: pointer;
+  }
+
+  .metro-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(233,69,96,0.5);
+  }
+
+  .metro-value {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  /* Районы */
+  .districts-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .district-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .district-btn.selected {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: white;
+  }
+
+  /* Карта */
+  #map {
+    width: 100%;
+    height: 400px;
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    z-index: 1;
+  }
+
+  .map-hint {
+    background: rgba(233,69,96,0.15);
+    border: 1px solid rgba(233,69,96,0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .map-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .btn-secondary {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+
+  .btn-secondary:active { opacity: 0.7; }
+
+  /* Кнопка сохранить */
+  .save-btn {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white;
+    border: none;
+    padding: 18px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    z-index: 200;
+    box-shadow: 0 -4px 20px rgba(233,69,96,0.3);
+  }
+
+  .save-btn:active { opacity: 0.9; }
+
+  .bottom-spacer { height: 70px; }
+
+  /* Summary preview */
+  .filter-summary {
+    background: linear-gradient(135deg, rgba(83,52,131,0.3), rgba(233,69,96,0.1));
+    border: 1px solid var(--accent2);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .filter-summary strong { color: var(--accent); }
+
+  /* Polygon indicator */
+  .polygon-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  .polygon-status.set {
+    background: rgba(74,222,128,0.15);
+    color: var(--green);
+    border: 1px solid rgba(74,222,128,0.3);
+  }
+
+  .polygon-status.unset {
+    background: rgba(255,255,255,0.05);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green { background: var(--green); }
+  .dot.gray { background: var(--text2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏠 Фильтры поиска</h1>
+  <p>Москва · Аренда квартир</p>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('filters')">⚙️ Фильтры</div>
+  <div class="tab" onclick="switchTab('map')">🗺️ Зона</div>
+  <div class="tab" onclick="switchTab('preview')">👁️ Итог</div>
+</div>
+
+<!-- TAB 1: ФИЛЬТРЫ -->
+<div id="tab-filters" class="tab-content active">
+
+  <div class="section">
+    <div class="section-title">🛏️ Тип квартиры</div>
+    <div class="rooms-grid">
+      <button class="room-btn" data-room="0" onclick="toggleRoom(this)">Студия</button>
+      <button class="room-btn" data-room="1" onclick="toggleRoom(this)">1 комн.</button>
+      <button class="room-btn" data-room="2" onclick="toggleRoom(this)">2 комн.</button>
+      <button class="room-btn" data-room="3" onclick="toggleRoom(this)">3 комн.</button>
+      <button class="room-btn" data-room="4" onclick="toggleRoom(this)">4+</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💰 Цена (₽/месяц)</div>
+    <div class="price-inputs">
+      <div class="input-group">
+        <label>От</label>
+        <input type="number" id="price-min" placeholder="20 000" step="1000">
+      </div>
+      <div class="input-group">
+        <label>До</label>
+        <input type="number" id="price-max" placeholder="80 000" step="1000">
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🚇 Время до метро пешком</div>
+    <div class="metro-value" id="metro-display">10 мин</div>
+    <input type="range" class="metro-slider" id="metro-slider" min="5" max="60" step="5" value="10"
+      oninput="updateMetro(this.value)">
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-top:6px;">
+      <span>5 мин</span><span>30 мин</span><span>60 мин</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📐 Площадь и этаж</div>
+    <div class="price-inputs">
+      <div class="input-group">
+        <label>Площадь от (м²)</label>
+        <input type="number" id="area-min" placeholder="30" step="5">
+      </div>
+      <div class="input-group">
+        <label>&nbsp;</label>
+        <input type="text" placeholder="напр. 35" disabled style="opacity:0.3">
+      </div>
+    </div>
+    <div style="height:12px"></div>
+    <div class="price-inputs">
+      <div class="input-group">
+        <label>Этаж от</label>
+        <input type="number" id="floor-min" placeholder="2" min="1">
+      </div>
+      <div class="input-group">
+        <label>Этаж до</label>
+        <input type="number" id="floor-max" placeholder="20" min="1">
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📍 Районы Москвы</div>
+    <div class="districts-grid" id="districts-grid">
+      <!-- Генерируется JS -->
+    </div>
+  </div>
+
+  <div class="bottom-spacer"></div>
+</div>
+
+<!-- TAB 2: КАРТА -->
+<div id="tab-map" class="tab-content">
+  <div class="map-hint">
+    🖊️ <strong>Нарисуй зону поиска:</strong> нажми кнопку полигона на карте (квадрат с точками), 
+    затем кликай по точкам чтобы обозначить границы района. Двойной клик — завершить.
+  </div>
+  <div id="map"></div>
+  <div id="polygon-status" class="polygon-status unset">
+    <div class="dot gray"></div>
+    Зона не задана — поиск по всей Москве
+  </div>
+  <div class="map-controls">
+    <button class="btn-secondary" onclick="clearPolygon()">🗑️ Очистить зону</button>
+    <button class="btn-secondary" onclick="fitMoscow()">📍 Москва целиком</button>
+  </div>
+  <div class="bottom-spacer"></div>
+</div>
+
+<!-- TAB 3: ИТОГ -->
+<div id="tab-preview" class="tab-content">
+  <div class="filter-summary" id="summary-box">
+    Настрой фильтры на первой вкладке 👆
+  </div>
+  <div class="section" style="font-size:13px; color:var(--text2); line-height:1.8;">
+    <div class="section-title">ℹ️ Как работает бот</div>
+    <p>• Бот проверяет новые объявления каждые <strong style="color:var(--text)">15 минут</strong></p>
+    <p>• Объявления которые ты уже видел — не повторяются</p>
+    <p>• Ты можешь проверить актуальность любого объявления</p>
+    <p>• Источники: <strong style="color:var(--text)">Циан</strong> (Авито, ЯН в планах)</p>
+  </div>
+  <div class="bottom-spacer"></div>
+</div>
+
+<button class="save-btn" onclick="saveFilters()">
+  💾 Сохранить и запустить поиск
+</button>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+// Состояние
+let state = {
+  rooms: [],
+  price_min: null,
+  price_max: null,
+  metro_time: 10,
+  districts: [],
+  area_min: null,
+  floor_min: null,
+  floor_max: null,
+  map_polygon: null,
+};
+
+const MOSCOW_DISTRICTS = [
+  "Арбат","Замоскворечье","Краснопресненский","Тверской","Хамовники",
+  "Басманный","Лефортово","Пресненский","Таганский","Якиманка",
+  "Академический","Гагаринский","Донской","Ломоносовский","Обручевский",
+  "Бутово","Зюзино","Коньково","Котловка","Черёмушки",
+  "Аэропорт","Войковский","Головинский","Хорошёво-Мнёвники","Щукино",
+  "Измайлово","Метрогородок","Богородское","Преображенское","Сокольники",
+  "Бибирево","Лианозово","Медведково","Отрадное","Свиблово",
+  "Алексеевский","Марьина Роща","Останкино","Ростокино","ВДНХ",
+  "Жулебино","Капотня","Кузьминки","Люблино","Печатники",
+  "Балашиха (МО)","Химки (МО)","Мытищи (МО)","Красногорск (МО)",
+];
+
+// Инициализируем районы
+const grid = document.getElementById('districts-grid');
+MOSCOW_DISTRICTS.forEach(d => {
+  const btn = document.createElement('button');
+  btn.className = 'district-btn';
+  btn.textContent = d;
+  btn.dataset.district = d;
+  btn.onclick = () => toggleDistrict(btn);
+  grid.appendChild(btn);
+});
+
+// Переключение вкладок
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'map' && !window.mapInited) initMap();
+  if (name === 'preview') updateSummary();
+}
+
+// Комнаты
+function toggleRoom(btn) {
+  const r = btn.dataset.room;
+  btn.classList.toggle('selected');
+  if (state.rooms.includes(r)) {
+    state.rooms = state.rooms.filter(x => x !== r);
+  } else {
+    state.rooms.push(r);
+  }
+}
+
+// Метро слайдер
+function updateMetro(val) {
+  state.metro_time = parseInt(val);
+  document.getElementById('metro-display').textContent = val + ' мин';
+  const slider = document.getElementById('metro-slider');
+  const pct = ((val - 5) / 55 * 100) + '%';
+  slider.style.setProperty('--pct', pct);
+}
+updateMetro(10);
+
+// Районы
+function toggleDistrict(btn) {
+  const d = btn.dataset.district;
+  btn.classList.toggle('selected');
+  if (state.districts.includes(d)) {
+    state.districts = state.districts.filter(x => x !== d);
+  } else {
+    state.districts.push(d);
+  }
+}
+
+// Карта
+let map, drawnItems, drawControl;
+window.mapInited = false;
+
+function initMap() {
+  if (window.mapInited) return;
+  window.mapInited = true;
+
+  map = L.map('map', {
+    center: [55.751244, 37.618423],
+    zoom: 10,
+    zoomControl: true,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+
+  drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  drawControl = new L.Control.Draw({
+    edit: { featureGroup: drawnItems },
+    draw: {
+      polygon: {
+        shapeOptions: { color: '#e94560', fillOpacity: 0.2 },
+        allowIntersection: false,
+        showArea: true,
+      },
+      rectangle: {
+        shapeOptions: { color: '#e94560', fillOpacity: 0.2 },
+      },
+      circle: false,
+      circlemarker: false,
+      marker: false,
+      polyline: false,
+    },
+  });
+  map.addControl(drawControl);
+
+  map.on(L.Draw.Event.CREATED, (e) => {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(e.layer);
+    const latlngs = e.layer.getLatLngs()[0];
+    state.map_polygon = latlngs.map(p => ({ lat: p.lat, lng: p.lng }));
+    updatePolygonStatus(true);
+  });
+
+  map.on(L.Draw.Event.DELETED, () => {
+    state.map_polygon = null;
+    updatePolygonStatus(false);
+  });
+
+  setTimeout(() => map.invalidateSize(), 200);
+}
+
+function updatePolygonStatus(set) {
+  const el = document.getElementById('polygon-status');
+  if (set) {
+    el.className = 'polygon-status set';
+    el.innerHTML = '<div class="dot green"></div> Зона задана ✓ — поиск только в этой области';
+  } else {
+    el.className = 'polygon-status unset';
+    el.innerHTML = '<div class="dot gray"></div> Зона не задана — поиск по всей Москве';
+  }
+}
+
+function clearPolygon() {
+  if (drawnItems) drawnItems.clearLayers();
+  state.map_polygon = null;
+  updatePolygonStatus(false);
+}
+
+function fitMoscow() {
+  if (map) map.setView([55.751244, 37.618423], 10);
+}
+
+// Превью итогов
+function updateSummary() {
+  const pMin = document.getElementById('price-min').value;
+  const pMax = document.getElementById('price-max').value;
+  const aMin = document.getElementById('area-min').value;
+  const fMin = document.getElementById('floor-min').value;
+  const fMax = document.getElementById('floor-max').value;
+
+  const roomsMap = {"0":"Студия","1":"1-комн.","2":"2-комн.","3":"3-комн.","4":"4+ комн."};
+  const roomsStr = state.rooms.length > 0 ? state.rooms.map(r => roomsMap[r]).join(', ') : 'Любые';
+  const districtsStr = state.districts.length > 0 ? state.districts.join(', ') : 'Вся Москва';
+
+  let html = `
+    <div>🛏️ <strong>Комнаты:</strong> ${roomsStr}</div>
+    <div>💰 <strong>Цена:</strong> ${pMin ? 'от ' + Number(pMin).toLocaleString() + ' ₽' : ''} ${pMax ? 'до ' + Number(pMax).toLocaleString() + ' ₽' : '(не ограничена)'}</div>
+    <div>🚇 <strong>До метро:</strong> до ${state.metro_time} мин пешком</div>
+    <div>📐 <strong>Площадь:</strong> ${aMin ? 'от ' + aMin + ' м²' : 'любая'}</div>
+    <div>🏢 <strong>Этаж:</strong> ${fMin || '—'} – ${fMax || '—'}</div>
+    <div>📍 <strong>Районы:</strong> ${districtsStr}</div>
+    <div>🗺️ <strong>Зона на карте:</strong> ${state.map_polygon ? '✅ задана (' + state.map_polygon.length + ' точек)' : 'не задана'}</div>
+  `;
+  document.getElementById('summary-box').innerHTML = html;
+}
+
+// Сохранение
+function saveFilters() {
+  const pMin = document.getElementById('price-min').value;
+  const pMax = document.getElementById('price-max').value;
+
+  const filters = {
+    rooms: state.rooms,
+    price_min: pMin ? parseInt(pMin) : null,
+    price_max: pMax ? parseInt(pMax) : null,
+    metro_time: state.metro_time,
+    districts: state.districts,
+    area_min: document.getElementById('area-min').value ? parseFloat(document.getElementById('area-min').value) : null,
+    floor_min: document.getElementById('floor-min').value ? parseInt(document.getElementById('floor-min').value) : null,
+    floor_max: document.getElementById('floor-max').value ? parseInt(document.getElementById('floor-max').value) : null,
+    map_polygon: state.map_polygon,
+  };
+
+  tg.sendData(JSON.stringify(filters));
+}
+</script>
+</body>
+</html>
